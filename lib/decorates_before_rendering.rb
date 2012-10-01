@@ -13,10 +13,27 @@ require 'active_support/core_ext/class/attribute'
 #
 # @thing_1 and @thing_2 will be decorated right before a rendering occurs.
 #
+# You can also specify the decorator you wish to use for a particular instance variable:
+#
+#   class StuffController < ApplicationController
+#     include DecoratesBeforeRendering
+#
+#     decorates :thing_1, :with => ThingListDecorator
+#     decorates :thing_2
+#   end
+#
+# @thing_1 will be a ThingListDecorator (or contain them), and @thing_2 will be a Thing2Decorator.
+#
 module DecoratesBeforeRendering
   module ClassMethods
     def decorates(*unsigiled_ivar_names)
-      self.__ivars_to_decorate__ = unsigiled_ivar_names.map { |i| "@#{i}" }
+      options = {}
+      if unsigiled_ivar_names.last.instance_of?(::Hash)
+        options = unsigiled_ivar_names.pop
+      end
+
+      self.__ivars_to_decorate__ ||= []
+      self.__ivars_to_decorate__ << [ unsigiled_ivar_names.map { |i| "@#{i}" }, options ]
     end
   end
 
@@ -30,16 +47,20 @@ private
   def __decorate_ivars__
     ivars_to_decorate = self.class.__ivars_to_decorate__
 
-    return if ivars_to_decorate.nil?
+    return if ivars_to_decorate.nil? or ivars_to_decorate.empty?
 
-    ivars_to_decorate.each do |ivar_name|
-      ivar = instance_variable_get(ivar_name)
-      instance_variable_set(ivar_name, __decorator_for__(ivar)) unless ivar.nil?
+    ivars_to_decorate.each do |ivar_names, options|
+      ivar_names.each do |ivar_name|
+        if ivar = instance_variable_get(ivar_name)
+          decorator = (options[:with] || __decorator_for__(ivar)).decorate(ivar)
+          instance_variable_set(ivar_name, decorator)
+        end
+      end
     end
   end
 
   def __decorator_for__(ivar)
-    __decorator_name_for__(ivar).constantize.decorate(ivar)
+    __decorator_name_for__(ivar).constantize
   end
 
   def __decorator_name_for__(ivar)
