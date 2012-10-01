@@ -13,6 +13,17 @@ require 'active_support/core_ext/class/attribute'
 #
 # @thing_1 and @thing_2 will be decorated right before a rendering occurs.
 #
+# You can also specify the decorator you wish to use for a particular instance variable:
+#
+#   class StuffController < ApplicationController
+#     include DecoratesBeforeRendering
+#
+#     decorates :thing_1, :with => ThingListDecorator
+#     decorates :thing_2
+#   end
+#
+# @thing_1 will be a ThingListDecorator (or contain them), and @thing_2 will be a Thing2Decorator.
+#
 module DecoratesBeforeRendering
   module ClassMethods
     def decorates(*unsigiled_ivar_names)
