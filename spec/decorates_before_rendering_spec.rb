@@ -1,12 +1,14 @@
 require_relative '../lib/decorates_before_rendering'
 
 class MyCompletelyFakeModelDecorator; end
+class MyOtherCompletelyFakeModelDecorator; end
 
 describe DecoratesBeforeRendering do
   # NOTE: these are married together, so they're tested together.
   describe '::decorates + #render' do
     let(:sentinel) { double(:sentinel) }
     let(:ivar) { double('@ivar') }
+    let(:ivars) { double('@ivars') }
 
     # NOTE: This superclass is here so we know that the correct render gets
     #       called. It can't be defined in the subclass, or else that one
@@ -27,16 +29,17 @@ describe DecoratesBeforeRendering do
       Class.new(superclass) do
         include DecoratesBeforeRendering
 
-        attr_reader :ivar
+        attr_reader :ivar, :ivars
 
-        def initialize(sentinel, ivar)
+        def initialize(sentinel, ivar, ivars = nil)
           super(sentinel)
 
           @ivar = ivar
+          @ivars = ivars
         end
       end
     end
-    let(:instance) { klass.new(sentinel, ivar) }
+    let(:instance) { klass.new(sentinel, ivar, ivars) }
     let(:args) { double('*args') }
 
     context "no ivars" do
@@ -92,5 +95,19 @@ describe DecoratesBeforeRendering do
         subclass_instance.render(args)
       end
     end
+
+    context "Specify a different decorator class for an automatic decorator" do
+      it "should function correctly" do
+        klass.decorates(:ivars, :with => MyOtherCompletelyFakeModelDecorator)
+        klass.decorates(:ivar)
+        subclass_instance = Class.new(klass).new(sentinel, ivar, ivars)
+        sentinel.should_receive(:render).with(args)
+        MyOtherCompletelyFakeModelDecorator.should_receive(:decorate).with(ivars)
+        MyCompletelyFakeModelDecorator.should_receive(:decorate).with(ivar)
+        ivar.stub_chain(:class, :model_name => 'MyCompletelyFakeModel')
+        subclass_instance.render(args)
+      end
+    end
   end
 end
+
