@@ -2,6 +2,7 @@
 require "decorates_before_rendering/version"
 require 'active_support/core_ext/string/inflections'
 require 'active_support/core_ext/class/attribute'
+require 'active_support/concern'
 
 # Decorates the specified fields. For instance, if you have
 #
@@ -25,15 +26,18 @@ require 'active_support/core_ext/class/attribute'
 # @thing_1 will be a ThingListDecorator (or contain them), and @thing_2 will be a Thing2Decorator.
 #
 module DecoratesBeforeRendering
-  module ClassMethods
-    def decorates(*unsigiled_ivar_names)
-      options = {}
-      if unsigiled_ivar_names.last.instance_of?(::Hash)
-        options = unsigiled_ivar_names.pop
-      end
+  extend ActiveSupport::Concern
 
-      self.__ivars_to_decorate__ ||= []
-      self.__ivars_to_decorate__ << [ unsigiled_ivar_names.map { |i| "@#{i}" }, options ]
+  included do
+    class_attribute :__decorates__, :instance_writer => false
+
+    class_eval do
+      def self.decorates(*args)
+        options = args.extract_options!
+
+        self.__decorates__ ||= []
+        self.__decorates__ << [ args.map { |i| "@#{i}" }, options ]
+      end
     end
   end
 
@@ -45,15 +49,15 @@ module DecoratesBeforeRendering
 private
 
   def __decorate_ivars__
-    ivars_to_decorate = self.class.__ivars_to_decorate__
+    return if __decorates__.nil? || __decorates__.empty?
 
-    return if ivars_to_decorate.nil? or ivars_to_decorate.empty?
-
-    ivars_to_decorate.each do |ivar_names, options|
+    __decorates__.each do |ivar_names, options|
       ivar_names.each do |ivar_name|
-        if ivar = instance_variable_get(ivar_name)
-          decorator = (options[:with] || __decorator_for__(ivar)).decorate(ivar)
-          instance_variable_set(ivar_name, decorator)
+        ivar = instance_variable_get(ivar_name)
+        if ivar
+          decorator = options.key?(:with) ? options.fetch(:with) : __decorator_for__(ivar)
+          decorated = decorator.decorate(ivar)
+          instance_variable_set(ivar_name, decorated)
         end
       end
     end
@@ -69,16 +73,13 @@ private
 
   def __model_name_for__(ivar)
     if ivar.respond_to?(:model_name)
-      ivar
+      source = ivar
     elsif ivar.class.respond_to?(:model_name)
-      ivar.class
+      source = ivar.class
     else
       raise ArgumentError, "#{ivar} does not have an associated model"
-    end.model_name
-  end
+    end
 
-  def self.included(base)
-    base.class_attribute :__ivars_to_decorate__, :instance_accessor => false
-    base.extend ClassMethods
+    source.model_name
   end
 end
