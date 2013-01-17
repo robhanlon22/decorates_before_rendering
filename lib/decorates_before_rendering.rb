@@ -25,11 +25,22 @@ require 'active_support/concern'
 #
 # @thing_1 will be a ThingListDecorator (or contain them), and @thing_2 will be a Thing2Decorator.
 #
+# For Draper 1.0 and above, collection elements are no longer decorated with
+# Decorator.decorate(collection), but with Decorator.decorate_collection(collection).
+# Specify that you want to decorate a collection, and with what decorator, with this syntax:
+#
+#   class StuffController < ApplicationController
+#     include DecoratesBeforeRendering
+#
+#     decorates_collection :things_1, :with => ThingListDecorator
+#   end
+#
 module DecoratesBeforeRendering
   extend ActiveSupport::Concern
 
   included do
     class_attribute :__decorates__, :instance_writer => false
+    class_attribute :__decorates_collection__, :instance_writer => false
 
     class_eval do
       def self.decorates(*args)
@@ -37,6 +48,15 @@ module DecoratesBeforeRendering
 
         self.__decorates__ ||= []
         self.__decorates__ << [ args.map { |i| "@#{i}" }, options ]
+      end
+
+      def self.decorates_collection(*args)
+        options = args.extract_options!
+
+        raise ArgumentError, ":with is required for now" if !options[:with]
+
+        self.__decorates_collection__ ||= []
+        self.__decorates_collection__ << [ args.map { |i| "@#{i}" }, options ]
       end
     end
   end
@@ -49,15 +69,31 @@ module DecoratesBeforeRendering
 private
 
   def __decorate_ivars__
-    return if __decorates__.nil? || __decorates__.empty?
+    return if (__decorates__.nil? || __decorates__.empty?) and
+              (__decorates_collection__.nil? || __decorates_collection__.empty?)
 
-    __decorates__.each do |ivar_names, options|
+    if !__decorates__.nil?
+      __decorate_ivar_names__(__decorates__) do |ivar_name, ivar, options|
+        decorator = options.key?(:with) ? options.fetch(:with) : __decorator_for__(ivar)
+        decorated = decorator.decorate(ivar)
+        instance_variable_set(ivar_name, decorated)
+      end
+    end
+
+    if !__decorates_collection__.nil?
+      __decorate_ivar_names__(__decorates_collection__) do |ivar_name, ivar, options|
+        decorated = options.fetch(:with).decorate_collection(ivar)
+        instance_variable_set(ivar_name, decorated)
+      end
+    end
+  end
+
+  def __decorate_ivar_names__(ivars)
+    ivars.each do |ivar_names, options|
       ivar_names.each do |ivar_name|
         ivar = instance_variable_get(ivar_name)
         if ivar
-          decorator = options.key?(:with) ? options.fetch(:with) : __decorator_for__(ivar)
-          decorated = decorator.decorate(ivar)
-          instance_variable_set(ivar_name, decorated)
+          yield ivar_name, ivar, options
         end
       end
     end
